@@ -35,7 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: const Text('Settings'),
       ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
           // ── Profile Card ──────────────────────────────────────────
           Padding(
@@ -103,7 +103,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
           _SectionHeader('Organization'),
           const SizedBox(height: 8),
 
@@ -164,7 +164,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
           _SectionHeader('Appearance'),
           const SizedBox(height: 8),
 
@@ -222,7 +222,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
 
           if (canManage) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: 8),
             _SectionHeader('Administration'),
             const SizedBox(height: 8),
 
@@ -271,7 +271,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
 
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
 
           // ── Logout ───────────────────────────────────────────────
           Padding(
