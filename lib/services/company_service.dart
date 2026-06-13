@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
 
@@ -117,35 +116,20 @@ class CompanyService extends ChangeNotifier {
   }
 
   static List<CompanyConfig> _loadCompaniesFromEnv() {
-    final primaryUrl = _envValue(['DIVIT_PLAST_SUPABASE_URL']);
-    final primaryAnonKey = _envValue(['DIVIT_PLAST_SUPABASE_ANON_KEY']);
-    final llpUrl = _envValue(['DIVIT_PLAST_LLP_SUPABASE_URL']);
-    final llpAnonKey = _envValue(['DIVIT_PLAST_LLP_SUPABASE_ANON_KEY']);
-
-    return [
-      if (primaryUrl != null && primaryAnonKey != null)
-        CompanyConfig(
-          id: 'divit_plast',
-          name: 'Divit Plast',
-          supabaseUrl: primaryUrl,
-          supabaseAnonKey: primaryAnonKey,
-        ),
-      if (llpUrl != null && llpAnonKey != null)
-        CompanyConfig(
-          id: 'divit_plast_llp',
-          name: 'Divit Plast LLP',
-          supabaseUrl: llpUrl,
-          supabaseAnonKey: llpAnonKey,
-        ),
+    return const [
+      CompanyConfig(
+        id: 'divit_plast',
+        name: 'Divit Plast',
+        supabaseUrl: 'https://mzhtepivprtxaqucyrlu.supabase.co',
+        supabaseAnonKey:
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im16aHRlcGl2cHJ0eGFxdWN5cmx1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDc4NzYsImV4cCI6MjA5NjY4Mzg3Nn0.i17KF40r3vTp_cSZ-zu5iGxEiAU_Rpf3W4WzCwF_hWQ',
+      ),
+      CompanyConfig(
+        id: 'divit_plast_llp',
+        name: 'Divit Plast LLP',
+        supabaseUrl: 'https://mbcyfehrqznfwvfyvrhe.supabase.co',
+        supabaseAnonKey: 'sb_publishable_8borVLuL1JcD0w9GObmHiw_U1TAT3Pl',
+      ),
     ];
-  }
-
-  static String? _envValue(List<String> keys) {
-    for (final key in keys) {
-      final value = dotenv.env[key]?.trim();
-      if (value != null && value.isNotEmpty) return value;
-    }
-
-    return null;
   }
 }
