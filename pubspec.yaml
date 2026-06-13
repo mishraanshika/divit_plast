@@ -1,0 +1,56 @@
+name: manufacturing_app
+description: Manufacturing Order Management App - Track raw materials, customer supply orders, and production jobs with role-based access control.
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.0
+
+  # Google Fonts
+  google_fonts: ^6.2.1
+  
+  # Firebase & Auth
+  firebase_core: ^4.0.0
+  firebase_auth: ^6.0.0
+  google_sign_in: ^6.3.0
+  
+  # Backend - Supabase
+  supabase_flutter: ^2.8.0
+  
+  # State Management
+  provider: ^6.1.5+1
+  
+  # UI & Date
+  flutter_datetime_picker_plus: ^2.1.0
+  intl: ^0.19.0
+  cached_network_image: ^3.3.0
+  
+  # Utilities
+  uuid: ^4.0.0
+  shared_preferences: ^2.2.0
+  flutter_dotenv: ^6.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/logo.jpeg"
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/images/
+    - assets/icons/
+    - .env

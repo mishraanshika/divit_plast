@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "14579148353",
+    "project_id": "divit-plast",
+    "storage_bucket": "divit-plast.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:14579148353:android:db565832fc0906f50bc8c0",
+        "android_client_info": {
+          "package_name": "com.divitplast"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "14579148353-dlbujv5h8tp1ueuh4ef0gs6adro82kva.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcU55EG3n_Ze24e8Yu1MwKPAaNr16Vxfg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "14579148353-dlbujv5h8tp1ueuh4ef0gs6adro82kva.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "14579148353-f81r1cjgq7vnc3l29rgt5pg55b3qcv1m.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.manufacturingApp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:14579148353:android:a572542cebd87e4a0bc8c0",
+        "android_client_info": {
+          "package_name": "com.example.manufacturing_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "14579148353-70gbnp1cl6tnvc2rfflnv7d7ebuf1rkb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.manufacturing_app",
+            "certificate_hash": "75d07ab8dcf6c34123151917723f7df31e5e863a"
+          }
+        },
+        {
+          "client_id": "14579148353-dlbujv5h8tp1ueuh4ef0gs6adro82kva.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcU55EG3n_Ze24e8Yu1MwKPAaNr16Vxfg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "14579148353-dlbujv5h8tp1ueuh4ef0gs6adro82kva.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "14579148353-f81r1cjgq7vnc3l29rgt5pg55b3qcv1m.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.manufacturingApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
