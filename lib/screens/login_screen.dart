@@ -77,8 +77,7 @@ class LoginScreen extends StatelessWidget {
                               child: CircularProgressIndicator(
                                 color: Colors.white,
                                 strokeWidth: 2,
-                              ),
-                            )
+                              ))
                           : const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [

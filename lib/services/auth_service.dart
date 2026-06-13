@@ -1,4 +1,6 @@
 // lib/services/auth_service.dart
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase;
 import 'package:google_sign_in/google_sign_in.dart';
@@ -13,7 +15,7 @@ class AuthService extends ChangeNotifier {
   final CompanyService _companyService;
   final firebase.FirebaseAuth _firebaseAuth = firebase.FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
-  static const String _googleWebClientId =
+  static const String _googleServerClientId =
       '14579148353-dlbujv5h8tp1ueuh4ef0gs6adro82kva.apps.googleusercontent.com';
 
   firebase.User? _currentUser;
@@ -22,6 +24,7 @@ class AuthService extends ChangeNotifier {
   bool _isInitialized = false;
   bool _googleInitialized = false;
   String? _error;
+  StreamSubscription<GoogleSignInAuthenticationEvent>? _googleAuthSubscription;
   RealtimeChannel? _userRoleChannel;
 
   firebase.User? get currentUser => _currentUser;
@@ -37,8 +40,62 @@ class AuthService extends ChangeNotifier {
   Future<void> _ensureGoogleInitialized() async {
     if (_googleInitialized) return;
 
-    await _googleSignIn.initialize(serverClientId: _googleWebClientId);
+    if (kIsWeb) {
+      _googleInitialized = true;
+      return;
+    }
+
+    await _googleSignIn.initialize(serverClientId: _googleServerClientId);
+    _googleAuthSubscription = _googleSignIn.authenticationEvents.listen(
+      (event) => unawaited(_handleGoogleAuthenticationEvent(event)),
+      onError: _handleGoogleAuthenticationError,
+    );
     _googleInitialized = true;
+
+    _googleSignIn.attemptLightweightAuthentication();
+  }
+
+  Future<void> _handleGoogleAuthenticationEvent(
+    GoogleSignInAuthenticationEvent event,
+  ) async {
+    if (event is GoogleSignInAuthenticationEventSignIn) {
+      try {
+        _isLoading = true;
+        _error = null;
+        notifyListeners();
+
+        await _signInToFirebase(event.user);
+      } on firebase.FirebaseAuthException catch (e) {
+        _error = 'Firebase Auth Error: ${e.message}';
+        debugPrint(_error);
+      } catch (e, stack) {
+        _error = 'Sign-in failed: $e';
+        debugPrint(_error);
+        debugPrintStack(stackTrace: stack);
+      } finally {
+        _isLoading = false;
+        notifyListeners();
+      }
+    } else if (event is GoogleSignInAuthenticationEventSignOut) {
+      _currentUser = null;
+      _userRole = null;
+      notifyListeners();
+    }
+  }
+
+  void _handleGoogleAuthenticationError(Object error, StackTrace stackTrace) {
+    if (error is GoogleSignInException &&
+        (error.code == GoogleSignInExceptionCode.canceled ||
+            error.code == GoogleSignInExceptionCode.interrupted ||
+            error.code == GoogleSignInExceptionCode.uiUnavailable)) {
+      return;
+    }
+
+    _error = 'Google Sign-In Error: $error';
+    _isLoading = false;
+    debugPrint(_error);
+    debugPrintStack(stackTrace: stackTrace);
+    notifyListeners();
   }
 
   // Initialize auth - runs on app startup
@@ -74,32 +131,20 @@ class AuthService extends ChangeNotifier {
       notifyListeners();
       await _ensureGoogleInitialized();
 
+      if (kIsWeb) {
+        final provider = firebase.GoogleAuthProvider()
+          ..setCustomParameters({'prompt': 'select_account'});
+        final userCredential = await _firebaseAuth.signInWithPopup(provider);
+        await _completeFirebaseSignIn(userCredential);
+        return;
+      }
+
       if (!_googleSignIn.supportsAuthenticate()) {
         throw Exception('Google sign-in is not available on this platform');
       }
 
       final googleUser = await _googleSignIn.authenticate();
-      final googleAuth = googleUser.authentication;
-      final idToken = googleAuth.idToken;
-
-      if (idToken == null) {
-        throw Exception('Google did not return an ID token');
-      }
-
-      final credential = firebase.GoogleAuthProvider.credential(
-        idToken: idToken,
-      );
-
-      final userCredential = await _firebaseAuth.signInWithCredential(
-        credential,
-      );
-      _currentUser = userCredential.user;
-
-      if (_companyService.companies.length > 1) {
-        await _companyService.clearSelection();
-      }
-
-      await _setupCurrentCompanyUserIfReady();
+      await _signInToFirebase(googleUser);
     } on GoogleSignInException catch (e) {
       final description = e.description ?? e.code.name;
       _error = e.code == GoogleSignInExceptionCode.canceled
@@ -117,6 +162,36 @@ class AuthService extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _signInToFirebase(GoogleSignInAccount googleUser) async {
+    final googleAuth = googleUser.authentication;
+    final idToken = googleAuth.idToken;
+
+    if (idToken == null) {
+      throw Exception('Google did not return an ID token');
+    }
+
+    final credential = firebase.GoogleAuthProvider.credential(
+      idToken: idToken,
+    );
+
+    final userCredential = await _firebaseAuth.signInWithCredential(
+      credential,
+    );
+    await _completeFirebaseSignIn(userCredential);
+  }
+
+  Future<void> _completeFirebaseSignIn(
+    firebase.UserCredential userCredential,
+  ) async {
+    _currentUser = userCredential.user;
+
+    if (_companyService.companies.length > 1) {
+      await _companyService.clearSelection();
+    }
+
+    await _setupCurrentCompanyUserIfReady();
   }
 
   Future<void> selectCompany(String companyId) async {
@@ -229,10 +304,12 @@ class AuthService extends ChangeNotifier {
       await _userRoleChannel?.unsubscribe();
       _userRoleChannel = null;
 
-      try {
-        await _googleSignIn.disconnect();
-      } catch (e) {
-        debugPrint('Google disconnect skipped: $e');
+      if (!kIsWeb) {
+        try {
+          await _googleSignIn.disconnect();
+        } catch (e) {
+          debugPrint('Google disconnect skipped: $e');
+        }
       }
 
       await _firebaseAuth.signOut();
@@ -329,5 +406,12 @@ class AuthService extends ChangeNotifier {
     if (_userRole == 'Co-Director' && requiredRole != 'Director') return true;
     if (_userRole == 'Manager' && requiredRole == 'Manager') return true;
     return false;
+  }
+
+  @override
+  void dispose() {
+    _googleAuthSubscription?.cancel();
+    unawaited(_userRoleChannel?.unsubscribe());
+    super.dispose();
   }
 }

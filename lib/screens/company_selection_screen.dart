@@ -33,6 +33,7 @@ class CompanySelectionScreen extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w700,
+                      color: Colors.black,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -127,6 +128,7 @@ class _CompanyOption extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
+                    color: Colors.black,
                   ),
                 ),
               ),
@@ -136,7 +138,7 @@ class _CompanyOption extends StatelessWidget {
                       height: 22,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.chevron_right),
+                  : const Icon(Icons.chevron_right, color: Colors.black),
             ],
           ),
         ),

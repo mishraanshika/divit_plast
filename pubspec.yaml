@@ -50,6 +50,20 @@ flutter_launcher_icons:
   adaptive_icon_foreground: "assets/images/logo.png"
   remove_alpha_ios: true
   min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "assets/images/logo.png"
+    background_color: "#CC2200"
+    theme_color: "#CC2200"
+
+  macos:
+    generate: true
+    image_path: "assets/images/logo.png"
+
+  windows:
+    generate: true
+    image_path: "assets/images/logo.png"
+    icon_size: 48
 
 flutter:
   uses-material-design: true
