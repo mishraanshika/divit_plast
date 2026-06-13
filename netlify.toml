@@ -1,8 +1,27 @@
 [build]
   command = '''
-  printf "DIVIT_PLAST_SUPABASE_URL=%s\nDIVIT_PLAST_SUPABASE_ANON_KEY=%s\nDIVIT_PLAST_LLP_SUPABASE_URL=%s\nDIVIT_PLAST_LLP_SUPABASE_ANON_KEY=%s\n" "$DIVIT_PLAST_SUPABASE_URL" "$DIVIT_PLAST_SUPABASE_ANON_KEY" "$DIVIT_PLAST_LLP_SUPABASE_URL" "$DIVIT_PLAST_LLP_SUPABASE_ANON_KEY" > .env
-  flutter build web --release
-  '''
+set -e
+
+printf "DIVIT_PLAST_SUPABASE_URL=%s\nDIVIT_PLAST_SUPABASE_ANON_KEY=%s\nDIVIT_PLAST_LLP_SUPABASE_URL=%s\nDIVIT_PLAST_LLP_SUPABASE_ANON_KEY=%s\n" "$DIVIT_PLAST_SUPABASE_URL" "$DIVIT_PLAST_SUPABASE_ANON_KEY" "$DIVIT_PLAST_LLP_SUPABASE_URL" "$DIVIT_PLAST_LLP_SUPABASE_ANON_KEY" > .env
+
+echo "Checking generated .env file..."
+ls -la .env
+echo ".env size:"
+wc -c .env
+
+echo "Checking required variables without printing secrets..."
+grep -q "^DIVIT_PLAST_SUPABASE_URL=." .env && echo "DIVIT_PLAST_SUPABASE_URL exists" || (echo "DIVIT_PLAST_SUPABASE_URL missing" && exit 1)
+grep -q "^DIVIT_PLAST_SUPABASE_ANON_KEY=." .env && echo "DIVIT_PLAST_SUPABASE_ANON_KEY exists" || (echo "DIVIT_PLAST_SUPABASE_ANON_KEY missing" && exit 1)
+grep -q "^DIVIT_PLAST_LLP_SUPABASE_URL=." .env && echo "DIVIT_PLAST_LLP_SUPABASE_URL exists" || (echo "DIVIT_PLAST_LLP_SUPABASE_URL missing" && exit 1)
+grep -q "^DIVIT_PLAST_LLP_SUPABASE_ANON_KEY=." .env && echo "DIVIT_PLAST_LLP_SUPABASE_ANON_KEY exists" || (echo "DIVIT_PLAST_LLP_SUPABASE_ANON_KEY missing" && exit 1)
+
+flutter build web --release
+
+echo "Checking whether Flutter copied .env into web assets..."
+ls -la build/web/assets/.env
+echo "Copied .env size:"
+wc -c build/web/assets/.env
+'''
   publish = "build/web"
 
 [[plugins]]
