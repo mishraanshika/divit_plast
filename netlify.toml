@@ -1,5 +1,8 @@
 [build]
-  command = "flutter build web --release"
+  command = '''
+  printf "DIVIT_PLAST_SUPABASE_URL=%s\nDIVIT_PLAST_SUPABASE_ANON_KEY=%s\nDIVIT_PLAST_LLP_SUPABASE_URL=%s\nDIVIT_PLAST_LLP_SUPABASE_ANON_KEY=%s\n" "$DIVIT_PLAST_SUPABASE_URL" "$DIVIT_PLAST_SUPABASE_ANON_KEY" "$DIVIT_PLAST_LLP_SUPABASE_URL" "$DIVIT_PLAST_LLP_SUPABASE_ANON_KEY" > .env
+  flutter build web --release
+  '''
   publish = "build/web"
 
 [[plugins]]
