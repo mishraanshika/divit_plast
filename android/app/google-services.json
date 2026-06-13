@@ -58,6 +58,14 @@
           }
         },
         {
+          "client_id": "14579148353-drpa2l9s3qrk4j0ptrerqqt7ldu5rpb2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.manufacturing_app",
+            "certificate_hash": "79cfcc86632f9071a1b5cb2a63ee68eb4fb82de8"
+          }
+        },
+        {
           "client_id": "14579148353-dlbujv5h8tp1ueuh4ef0gs6adro82kva.apps.googleusercontent.com",
           "client_type": 3
         }

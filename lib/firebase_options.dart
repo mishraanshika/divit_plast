@@ -57,22 +57,24 @@ class DefaultFirebaseOptions {
     projectId: 'divit-plast',
     storageBucket: 'divit-plast.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyCCgJ7ycO7XGkEOMWZ5YhVJ2K4DccplFps',
     appId: '1:14579148353:ios:9c32f0ac108773340bc8c0',
     messagingSenderId: '14579148353',
     projectId: 'divit-plast',
     storageBucket: 'divit-plast.firebasestorage.app',
+    androidClientId: '14579148353-70gbnp1cl6tnvc2rfflnv7d7ebuf1rkb.apps.googleusercontent.com',
+    iosClientId: '14579148353-f81r1cjgq7vnc3l29rgt5pg55b3qcv1m.apps.googleusercontent.com',
     iosBundleId: 'com.example.manufacturingApp',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyCCgJ7ycO7XGkEOMWZ5YhVJ2K4DccplFps',
     appId: '1:14579148353:ios:9c32f0ac108773340bc8c0',
     messagingSenderId: '14579148353',
     projectId: 'divit-plast',
     storageBucket: 'divit-plast.firebasestorage.app',
+    androidClientId: '14579148353-70gbnp1cl6tnvc2rfflnv7d7ebuf1rkb.apps.googleusercontent.com',
+    iosClientId: '14579148353-f81r1cjgq7vnc3l29rgt5pg55b3qcv1m.apps.googleusercontent.com',
     iosBundleId: 'com.example.manufacturingApp',
   );
 

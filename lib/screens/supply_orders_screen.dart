@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:manufacturing_app/widget/date_field.dart';
 import 'package:manufacturing_app/widget/numeric_field.dart';
 import 'package:manufacturing_app/widget/text_field.dart';
+import 'package:manufacturing_app/widget/unit_field.dart';
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
@@ -18,8 +21,17 @@ class SupplyOrdersScreen extends StatefulWidget {
 
 class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
   final DatabaseService _databaseService = DatabaseService();
+  static const List<String> _statusOptions = [
+    'Received',
+    'In Progress',
+    'Partially Dispatched',
+    'Dispatched',
+    'Partially Delivered',
+    'Delivered',
+  ];
 
   List<SupplyOrder> _orders = [];
+  StreamSubscription<List<SupplyOrder>>? _ordersSubscription;
 
   bool _loading = true;
 
@@ -30,7 +42,37 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
   @override
   void initState() {
     super.initState();
-    _loadOrders();
+    _subscribeOrders();
+  }
+
+  @override
+  void dispose() {
+    _ordersSubscription?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _subscribeOrders() {
+    setState(() => _loading = true);
+    _ordersSubscription?.cancel();
+    _ordersSubscription = _databaseService
+        .watchSupplyOrders(
+      searchQuery: _searchQuery,
+    )
+        .listen(
+      (orders) {
+        if (!mounted) return;
+        setState(() {
+          _orders = orders;
+          _loading = false;
+        });
+      },
+      onError: (Object error) {
+        debugPrint('Supply order stream error: $error');
+        if (!mounted) return;
+        setState(() => _loading = false);
+      },
+    );
   }
 
   Future<void> _loadOrders() async {
@@ -41,11 +83,14 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
         searchQuery: _searchQuery,
       );
 
+      if (!mounted) return;
       setState(() {
         _orders = orders;
       });
     } finally {
-      setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -57,18 +102,11 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
 
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xffF5F5F5),
       appBar: AppBar(
         centerTitle: true,
-        backgroundColor: Colors.white,
-        title: const Text(
-          'Customers',
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
+        title: const Text('Customers'),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(70),
           child: Padding(
@@ -79,7 +117,7 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
                   child: Container(
                     height: 42,
                     decoration: BoxDecoration(
-                      color: const Color(0xffF5F5F5),
+                      color: cs.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: TextField(
@@ -111,7 +149,7 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
                             : _searchController.text.trim();
                       });
 
-                      _loadOrders();
+                      _subscribeOrders();
                     },
                     child: const Text('Search'),
                   ),
@@ -123,7 +161,7 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
       ),
       body: _buildBody(auth),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.blue,
+        backgroundColor: const Color(0xFF2196F3),
         foregroundColor: Colors.white,
         onPressed: () => _showOrderForm(),
         child: const Icon(Icons.add),
@@ -178,15 +216,16 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
     SupplyOrder order,
     AuthService auth,
   ) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -211,9 +250,7 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
           ),
           Text(
             order.materialProduct,
-            style: TextStyle(
-              color: Colors.grey.shade600,
-            ),
+            style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6)),
           ),
           const SizedBox(height: 10),
           _infoRow(
@@ -222,46 +259,67 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
           ),
           _infoRow(
             Icons.inventory_2_outlined,
-            "Qty: ${order.quantity}",
+            "Qty: ${order.quantity} ${order.unit}",
           ),
           _infoRow(
             Icons.calendar_today_outlined,
             "Delivery: ${DateFormat('yyyy-MM-dd').format(order.deliveryDate)}",
           ),
           const SizedBox(height: 12),
-          Divider(color: Colors.grey.shade200),
+          Divider(color: Theme.of(context).dividerColor),
           const SizedBox(height: 8),
-          Text(
-            "Change Status:",
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: _statusButton(
-                  order,
-                  "Pending",
-                  Colors.blue,
-                ),
+              Text(
+                'Status',
+                style: TextStyle(
+                    fontSize: 12, color: cs.onSurface.withValues(alpha: 0.65)),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _statusButton(
-                  order,
-                  "In Progress",
-                  Colors.blue,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _statusButton(
-                  order,
-                  "Done",
-                  Colors.green,
+              const SizedBox(height: 8),
+              InkWell(
+                onTap: () => _showStatusPicker(order),
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: _statusColor(order.status).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color:
+                            _statusColor(order.status).withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: _statusColor(order.status),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          order.status,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: _statusColor(order.status),
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.unfold_more,
+                        size: 18,
+                        color:
+                            _statusColor(order.status).withValues(alpha: 0.7),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -275,8 +333,9 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
                   icon: const Icon(Icons.edit_outlined),
                   label: const Text("Edit"),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xffE3F2FD),
-                    foregroundColor: Colors.blue,
+                    backgroundColor: cs.primary.withValues(alpha: 0.12),
+                    foregroundColor: cs.primary,
+                    elevation: 0,
                   ),
                 ),
               ),
@@ -287,8 +346,9 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
                   icon: const Icon(Icons.delete_outline),
                   label: const Text("Delete"),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xffFFEBEE),
-                    foregroundColor: Colors.red,
+                    backgroundColor: cs.error.withValues(alpha: 0.12),
+                    foregroundColor: cs.error,
+                    elevation: 0,
                   ),
                 ),
               ),
@@ -300,15 +360,7 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
   }
 
   Widget _statusBadge(String status) {
-    Color color = Colors.orange;
-
-    if (status == "In Progress") {
-      color = Colors.blue;
-    }
-
-    if (status == "Done") {
-      color = Colors.green;
-    }
+    final color = _statusColor(status);
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -323,28 +375,40 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
         status,
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 10,
+          fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
       ),
     );
   }
 
-  Widget _infoRow(
-    IconData icon,
-    String text,
-  ) {
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'In Progress':
+        return Colors.blue;
+      case 'Partially Dispatched':
+        return Colors.lightBlue.shade700;
+      case 'Dispatched':
+        return Colors.indigo;
+      case 'Partially Delivered':
+        return Colors.teal;
+      case 'Delivered':
+        return Colors.green;
+      default:
+        return Colors.orange;
+    }
+  }
+
+  Widget _infoRow(IconData icon, String text) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
-          Icon(
-            icon,
-            size: 15,
-            color: Colors.grey,
-          ),
+          Icon(icon, size: 15, color: cs.onSurface.withValues(alpha: 0.45)),
           const SizedBox(width: 8),
-          Text(text),
+          Text(text,
+              style: TextStyle(color: cs.onSurface.withValues(alpha: 0.7))),
         ],
       ),
     );
@@ -400,33 +464,29 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(24),
-        ),
-      ),
+      useSafeArea: true,
       builder: (context) {
         return StatefulBuilder(
           builder: (
             context,
             setDialogState,
           ) {
-            return Container(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-              ),
-              child: SizedBox(
-                width: 650,
-                child: SingleChildScrollView(
-                  child: Form(
-                    key: formKey,
-                    child: Column(
-                      children: [
-                        Row(
+            return DraggableScrollableSheet(
+              initialChildSize: 0.9,
+              minChildSize: 0.3,
+              maxChildSize: 0.95,
+              expand: false,
+              builder: (context, scrollController) {
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewInsets.bottom,
+                  ),
+                  child: Column(
+                    children: [
+                      // ── Sticky Header ──────────────────────────────
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                        child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
@@ -444,238 +504,313 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 24),
-                        AppFormField(
-                          label: 'Customer Name',
-                          controller: customerController,
-                          required: true,
-                          errorMessage: 'Customer name is required',
-                        ),
-                        const SizedBox(height: 16),
-                        AppFormField(
-                          label: 'Material/Product',
-                          controller: productController,
-                          required: true,
-                          errorMessage: 'Material/Product is required',
-                        ),
-                        const SizedBox(height: 16),
-                        AppNumberField(
-                          label: 'Quantity',
-                          controller: quantityController,
-                          required: true,
-                        ),
-                        const SizedBox(height: 16),
-                        AppFormField(
-                          label: 'Unit',
-                          controller: unitController,
-                        ),
-                        const SizedBox(height: 16),
-                        AppFormField(
-                          label: 'PO Number',
-                          controller: poController,
-                          required: true,
-                          errorMessage: 'PO Number is required',
-                        ),
-                        const SizedBox(height: 16),
-                        AppFormField(
-                          label: 'Tray/Batch Number',
-                          controller: batchController,
-                        ),
-                        const SizedBox(height: 16),
-                        AppFormField(
-                          label: 'Bill Number',
-                          controller: billNumberController,
-                        ),
-                        const SizedBox(height: 16),
-                        AppFormField(
-                          label: 'Bill Amount',
-                          controller: billAmountController,
-                          keyboardType: TextInputType.number,
-                        ),
-                        const SizedBox(height: 16),
-                        AppDateField(
-                          label: 'Order Date',
-                          date: orderDate,
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: orderDate,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2100),
-                            );
-
-                            if (picked != null) {
-                              setDialogState(() {
-                                orderDate = picked;
-                              });
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        AppDateField(
-                          label: 'Order Received Date',
-                          date: receivedDate,
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: receivedDate,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2100),
-                            );
-
-                            if (picked != null) {
-                              setDialogState(() {
-                                receivedDate = picked;
-                              });
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        AppDateField(
-                          label: 'Committed Delivery Date',
-                          date: deliveryDate,
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: deliveryDate,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2100),
-                            );
-
-                            if (picked != null) {
-                              setDialogState(() {
-                                deliveryDate = picked;
-                              });
-                            }
-                          },
-                        ),
-                        const SizedBox(
-                          height: 16,
-                        ),
-                        const SizedBox(height: 16),
-                        AppFormField(
-                          label: 'Placed/Approved By',
-                          controller: TextEditingController(
-                            text: auth.currentUser?.displayName ?? '',
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: SizedBox(
-                                height: 48,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    elevation: 0,
-                                    backgroundColor: const Color(0xffF2F2F2),
-                                    foregroundColor: Colors.grey.shade700,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                  },
-                                  child: const Text('Cancel'),
+                      ),
+                      const SizedBox(height: 8),
+                      Divider(height: 1, color: Theme.of(context).dividerColor),
+                      // ── Scrollable Form Body ─────────────────────
+                      Expanded(
+                        child: SingleChildScrollView(
+                          controller: scrollController,
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                          child: Form(
+                            key: formKey,
+                            child: Column(
+                              children: [
+                                AppFormField(
+                                  label: 'Customer Name',
+                                  controller: customerController,
+                                  required: true,
+                                  errorMessage: 'Customer name is required',
                                 ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: SizedBox(
-                                height: 48,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xff2196F3),
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  onPressed: () async {
-                                    if (!formKey.currentState!.validate()) {
-                                      return;
-                                    }
-
-                                    final item = SupplyOrder(
-                                      id: order?.id,
-                                      orderReceivedDate: receivedDate,
-                                      orderDate: orderDate,
-                                      customerName: customerController.text,
-                                      materialProduct: productController.text,
-                                      quantity: double.parse(
-                                        quantityController.text,
-                                      ),
-                                      unit: unitController.text,
-                                      poNumber: poController.text,
-                                      trayBatchNumber:
-                                          batchController.text.isEmpty
-                                              ? null
-                                              : batchController.text,
-                                      billNumber:
-                                          billNumberController.text.isEmpty
-                                              ? null
-                                              : billNumberController.text,
-                                      billAmount:
-                                          billAmountController.text.isEmpty
-                                              ? null
-                                              : double.parse(
-                                                  billAmountController.text,
-                                                ),
-                                      deliveryDate: deliveryDate,
-                                      placedByUserId: auth.currentUser!.uid,
-                                      placedByUserName:
-                                          auth.currentUser!.displayName ?? '',
-                                      enteredByUserId: auth.currentUser!.uid,
-                                      enteredByUserName:
-                                          auth.currentUser!.displayName ?? '',
-                                      status: 'Pending',
+                                const SizedBox(height: 16),
+                                AppFormField(
+                                  label: 'Material/Product',
+                                  controller: productController,
+                                  required: true,
+                                  errorMessage: 'Material/Product is required',
+                                ),
+                                const SizedBox(height: 16),
+                                AppNumberField(
+                                  label: 'Quantity',
+                                  controller: quantityController,
+                                  required: true,
+                                ),
+                                const SizedBox(height: 16),
+                                AppUnitField(
+                                  label: 'Unit',
+                                  controller: unitController,
+                                  required: true,
+                                ),
+                                const SizedBox(height: 16),
+                                AppFormField(
+                                  label: 'PO Number',
+                                  controller: poController,
+                                  required: true,
+                                  errorMessage: 'PO Number is required',
+                                ),
+                                const SizedBox(height: 16),
+                                AppFormField(
+                                  label: 'Tray/Batch Number',
+                                  controller: batchController,
+                                ),
+                                const SizedBox(height: 16),
+                                AppFormField(
+                                  label: 'Bill Number',
+                                  controller: billNumberController,
+                                ),
+                                const SizedBox(height: 16),
+                                AppFormField(
+                                  label: 'Bill Amount',
+                                  controller: billAmountController,
+                                  keyboardType: TextInputType.number,
+                                ),
+                                const SizedBox(height: 16),
+                                AppDateField(
+                                  label: 'Order Date',
+                                  date: orderDate,
+                                  onTap: () async {
+                                    final picked = await showDatePicker(
+                                      context: context,
+                                      initialDate: orderDate,
+                                      firstDate: DateTime(2020),
+                                      lastDate: DateTime(2100),
                                     );
 
-                                    try {
-                                      if (order == null) {
-                                        await _databaseService
-                                            .createSupplyOrder(
-                                          item,
-                                          auth.currentUser!.uid,
-                                        );
-                                      } else {
-                                        await _databaseService
-                                            .updateSupplyOrder(
-                                          order.id!,
-                                          item,
-                                          auth.currentUser!.uid,
-                                        );
-                                      }
-
-                                      Navigator.pop(context);
-
-                                      _loadOrders();
-                                    } catch (e) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            e.toString(),
-                                          ),
-                                        ),
-                                      );
+                                    if (picked != null) {
+                                      setDialogState(() {
+                                        orderDate = picked;
+                                      });
                                     }
                                   },
-                                  child: Text(
-                                    order == null ? 'Create' : 'Update',
-                                  ),
                                 ),
-                              ),
-                            )
-                          ],
+                                const SizedBox(height: 16),
+                                AppDateField(
+                                  label: 'Order Received Date',
+                                  date: receivedDate,
+                                  onTap: () async {
+                                    final picked = await showDatePicker(
+                                      context: context,
+                                      initialDate: receivedDate,
+                                      firstDate: DateTime(2020),
+                                      lastDate: DateTime(2100),
+                                    );
+
+                                    if (picked != null) {
+                                      setDialogState(() {
+                                        receivedDate = picked;
+                                      });
+                                    }
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                                AppDateField(
+                                  label: 'Committed Delivery Date',
+                                  date: deliveryDate,
+                                  onTap: () async {
+                                    final picked = await showDatePicker(
+                                      context: context,
+                                      initialDate: deliveryDate,
+                                      firstDate: DateTime(2020),
+                                      lastDate: DateTime(2100),
+                                    );
+
+                                    if (picked != null) {
+                                      setDialogState(() {
+                                        deliveryDate = picked;
+                                      });
+                                    }
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                                Builder(builder: (ctx) {
+                                  final cs = Theme.of(ctx).colorScheme;
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Placed/Approved By',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 14, vertical: 14),
+                                        decoration: BoxDecoration(
+                                          color: cs.surfaceContainerHighest
+                                              .withValues(alpha: 0.5),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                          border: Border.all(
+                                              color: cs.outline
+                                                  .withValues(alpha: 0.3)),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.lock_outline,
+                                                size: 16,
+                                                color: cs.onSurface
+                                                    .withValues(alpha: 0.45)),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              auth.currentUser?.displayName ??
+                                                  '',
+                                              style: TextStyle(
+                                                  color: cs.onSurface
+                                                      .withValues(alpha: 0.7)),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }),
+                                const SizedBox(height: 24),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: SizedBox(
+                                        height: 48,
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            elevation: 0,
+                                            backgroundColor: Theme.of(context)
+                                                .colorScheme
+                                                .surfaceContainerHighest,
+                                            foregroundColor: Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
+                                                .withValues(alpha: 0.7),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                          onPressed: () {
+                                            Navigator.pop(context);
+                                          },
+                                          child: const Text('Cancel'),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: SizedBox(
+                                        height: 48,
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor:
+                                                const Color(0xff2196F3),
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                          onPressed: () async {
+                                            if (!formKey.currentState!
+                                                .validate()) {
+                                              return;
+                                            }
+
+                                            final item = SupplyOrder(
+                                              id: order?.id,
+                                              orderReceivedDate: receivedDate,
+                                              orderDate: orderDate,
+                                              customerName:
+                                                  customerController.text,
+                                              materialProduct:
+                                                  productController.text,
+                                              quantity: double.parse(
+                                                quantityController.text,
+                                              ),
+                                              unit: unitController.text,
+                                              poNumber: poController.text,
+                                              trayBatchNumber:
+                                                  batchController.text.isEmpty
+                                                      ? null
+                                                      : batchController.text,
+                                              billNumber: billNumberController
+                                                      .text.isEmpty
+                                                  ? null
+                                                  : billNumberController.text,
+                                              billAmount: billAmountController
+                                                      .text.isEmpty
+                                                  ? null
+                                                  : double.parse(
+                                                      billAmountController.text,
+                                                    ),
+                                              deliveryDate: deliveryDate,
+                                              placedByUserId:
+                                                  auth.currentUser!.uid,
+                                              placedByUserName: auth
+                                                      .currentUser!
+                                                      .displayName ??
+                                                  '',
+                                              enteredByUserId:
+                                                  auth.currentUser!.uid,
+                                              enteredByUserName: auth
+                                                      .currentUser!
+                                                      .displayName ??
+                                                  '',
+                                              status: status,
+                                            );
+
+                                            try {
+                                              if (order == null) {
+                                                await _databaseService
+                                                    .createSupplyOrder(
+                                                  item,
+                                                  auth.currentUser!.uid,
+                                                );
+                                              } else {
+                                                await _databaseService
+                                                    .updateSupplyOrder(
+                                                  order.id!,
+                                                  item,
+                                                  auth.currentUser!.uid,
+                                                );
+                                              }
+
+                                              if (!context.mounted) return;
+
+                                              Navigator.pop(context);
+                                              _loadOrders();
+                                            } catch (e) {
+                                              if (!context.mounted) return;
+
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    e.toString(),
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          },
+                                          child: Text(
+                                            order == null ? 'Create' : 'Update',
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  ],
+                                ),
+                                const SizedBox(height: 24),
+                              ],
+                            ),
+                          ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ),
-              ),
+                );
+              },
             );
           },
         );
@@ -683,85 +818,101 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
     );
   }
 
-  Widget _statusButton(
-    SupplyOrder order,
-    String status,
-    Color color,
-  ) {
-    final selected = order.status == status;
-    final auth = Provider.of<AuthService>(
-      context,
-      listen: false,
-    );
+  Future<void> _showStatusPicker(SupplyOrder order) async {
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final cs = Theme.of(context).colorScheme;
+    final screenHeight = MediaQuery.of(context).size.height;
 
-    return GestureDetector(
-      onTap: () async {
-        try {
-          await _databaseService.updateSupplyOrderStatus(
-            order.id!,
-            status,
-            auth.currentUser!.uid,
-          );
-
-          await _loadOrders();
-        } catch (e) {
-          if (!mounted) return;
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Failed to update status: $e',
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: screenHeight * 0.55),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 4),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: cs.outline.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-          );
-        }
-      },
-      child: Container(
-        height: 34,
-        decoration: BoxDecoration(
-          color: selected ? color : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Center(
-          child: Text(
-            status,
-            style: TextStyle(
-              color: selected ? Colors.white : Colors.black54,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Change Status',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  IconButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      icon: const Icon(Icons.close)),
+                ],
+              ),
             ),
-          ),
+            Divider(height: 1, color: cs.outlineVariant),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: _statusOptions.map((status) {
+                  final isCurrent = order.status == status;
+                  final color = _statusColor(status);
+                  return InkWell(
+                    onTap: () => Navigator.pop(ctx, status),
+                    child: Container(
+                      color: isCurrent
+                          ? color.withValues(alpha: 0.1)
+                          : Colors.transparent,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 16),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                                color: color, shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text(
+                              status,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: isCurrent
+                                    ? FontWeight.w700
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+                          if (isCurrent)
+                            Icon(Icons.check, color: color, size: 20),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
         ),
       ),
     );
-  }
 
-  Widget _datePickerTile({
-    required String title,
-    required DateTime date,
-    required Function(DateTime) onPicked,
-  }) {
-    return ListTile(
-      title: Text(title),
-      subtitle: Text(
-        DateFormat(
-          'dd MMM yyyy',
-        ).format(date),
-      ),
-      trailing: const Icon(Icons.calendar_today),
-      onTap: () async {
-        final picked = await showDatePicker(
-          context: context,
-          initialDate: date,
-          firstDate: DateTime(2020),
-          lastDate: DateTime(2100),
-        );
-
-        if (picked != null) {
-          onPicked(picked);
-        }
-      },
-    );
+    if (selected == null || selected == order.status) return;
+    try {
+      await _databaseService.updateSupplyOrderStatus(
+          order.id!, selected, auth.currentUser!.uid);
+      await _loadOrders();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to update status: $e')));
+    }
   }
 
   Future<void> _deleteOrder(
@@ -773,32 +924,18 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
           title: const Row(
             children: [
-              Icon(
-                Icons.delete_outline,
-                color: Colors.blue,
-              ),
+              Icon(Icons.delete_outline, color: Colors.blue),
               SizedBox(width: 8),
-              Text(
-                'Delete Order',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              Text('Delete Order',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
             ],
           ),
-          content: Text(
-            'Delete order "${order.customerName}"?',
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              height: 1.4,
-            ),
-          ),
+          content: Text('Delete order "${order.customerName}"?'),
           actionsPadding: const EdgeInsets.fromLTRB(
             20,
             0,

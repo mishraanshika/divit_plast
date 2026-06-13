@@ -4,49 +4,65 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'company_service.dart';
+
 class AuthService extends ChangeNotifier {
+  AuthService({CompanyService? companyService})
+      : _companyService = companyService ?? CompanyService.instance;
+
+  final CompanyService _companyService;
   final firebase.FirebaseAuth _firebaseAuth = firebase.FirebaseAuth.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-      clientId:
-          '14579148353-dlbujv5h8tp1ueuh4ef0gs6adro82kva.apps.googleusercontent.com');
-  final SupabaseClient _supabase = Supabase.instance.client;
+  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+  static const String _googleWebClientId =
+      '14579148353-dlbujv5h8tp1ueuh4ef0gs6adro82kva.apps.googleusercontent.com';
 
   firebase.User? _currentUser;
   String? _userRole;
   bool _isLoading = false;
+  bool _isInitialized = false;
+  bool _googleInitialized = false;
   String? _error;
+  RealtimeChannel? _userRoleChannel;
 
   firebase.User? get currentUser => _currentUser;
   String? get userRole => _userRole;
   bool get isLoading => _isLoading;
+  bool get isInitialized => _isInitialized;
   String? get error => _error;
+  List<CompanyConfig> get companies => _companyService.companies;
+  CompanyConfig? get selectedCompany => _companyService.selectedCompany;
+  bool get needsCompanySelection => _companyService.needsCompanySelection;
+  SupabaseClient get _supabase => _companyService.client;
+
+  Future<void> _ensureGoogleInitialized() async {
+    if (_googleInitialized) return;
+
+    await _googleSignIn.initialize(serverClientId: _googleWebClientId);
+    _googleInitialized = true;
+  }
 
   // Initialize auth - runs on app startup
   Future<void> initializeAuth() async {
+    if (_isInitialized) return;
+
     try {
       _isLoading = true;
       _error = null;
-      //notifyListeners();
+      notifyListeners();
+      await _ensureGoogleInitialized();
 
-      // Check if user is already logged in
       _currentUser = _firebaseAuth.currentUser;
 
       if (_currentUser != null) {
-        // Try to restore Google session silently
-        final googleUser = await _googleSignIn.signInSilently();
-        if (googleUser != null) {
-          await _fetchUserRole(_currentUser!.uid);
-        } else {
-          // No Google session, sign out
-          await logout();
-        }
+        await _setupCurrentCompanyUserIfReady();
       }
     } catch (e) {
       _error = 'Failed to initialize auth: $e';
       debugPrint(_error);
     } finally {
+      _isInitialized = true;
       _isLoading = false;
-      //notifyListeners();
+      notifyListeners();
     }
   }
 
@@ -56,18 +72,22 @@ class AuthService extends ChangeNotifier {
       _isLoading = true;
       _error = null;
       notifyListeners();
+      await _ensureGoogleInitialized();
 
-      final googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) {
-        _error = 'Google sign-in cancelled';
-        notifyListeners();
-        return;
+      if (!_googleSignIn.supportsAuthenticate()) {
+        throw Exception('Google sign-in is not available on this platform');
       }
 
-      final googleAuth = await googleUser.authentication;
+      final googleUser = await _googleSignIn.authenticate();
+      final googleAuth = googleUser.authentication;
+      final idToken = googleAuth.idToken;
+
+      if (idToken == null) {
+        throw Exception('Google did not return an ID token');
+      }
+
       final credential = firebase.GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
+        idToken: idToken,
       );
 
       final userCredential = await _firebaseAuth.signInWithCredential(
@@ -75,9 +95,17 @@ class AuthService extends ChangeNotifier {
       );
       _currentUser = userCredential.user;
 
-      // Check if user exists in Supabase, if not create as Director (first user)
-      await _setupUserInDatabase(_currentUser!);
-      await _fetchUserRole(_currentUser!.uid);
+      if (_companyService.companies.length > 1) {
+        await _companyService.clearSelection();
+      }
+
+      await _setupCurrentCompanyUserIfReady();
+    } on GoogleSignInException catch (e) {
+      final description = e.description ?? e.code.name;
+      _error = e.code == GoogleSignInExceptionCode.canceled
+          ? 'Google sign-in could not complete. If you selected an account and returned here, check the Android OAuth SHA fingerprints in Firebase.'
+          : 'Google Sign-In Error: $description';
+      debugPrint(_error);
     } on firebase.FirebaseAuthException catch (e) {
       _error = 'Firebase Auth Error: ${e.message}';
       debugPrint(_error);
@@ -91,20 +119,77 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  Future<void> selectCompany(String companyId) async {
+    try {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+
+      await _companyService.selectCompany(companyId);
+      await _setupCurrentCompanyUserIfReady();
+    } catch (e, stack) {
+      _error = 'Failed to select company: $e';
+      debugPrint(_error);
+      debugPrintStack(stackTrace: stack);
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _setupCurrentCompanyUserIfReady() async {
+    final user = _currentUser;
+    if (user == null) return;
+
+    if (_companyService.needsCompanySelection) {
+      _userRole = null;
+      await _userRoleChannel?.unsubscribe();
+      _userRoleChannel = null;
+      return;
+    }
+
+    await _setupUserInDatabase(user);
+    await _fetchUserRole(user.uid);
+    _subscribeToRoleChanges(user.uid);
+  }
+
+  // Subscribes to realtime postgres_changes on this user's row so that role
+  // promotions/demotions made by a Director are reflected immediately.
+  void _subscribeToRoleChanges(String userId) {
+    _userRoleChannel?.unsubscribe();
+    _userRoleChannel = _supabase
+        .channel('user-role-$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'users',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: userId,
+          ),
+          callback: (PostgresChangePayload payload) {
+            final newRole = payload.newRecord['role'] as String?;
+            if (newRole != null && newRole != _userRole) {
+              _userRole = newRole;
+              notifyListeners();
+            }
+          },
+        )
+        .subscribe();
+  }
+
   // Setup user in Supabase database
   Future<void> _setupUserInDatabase(firebase.User firebaseUser) async {
     try {
-      final response = await _supabase
+      final existingUser = await _supabase
           .from('users')
-          .select()
+          .select('id')
           .eq('id', firebaseUser.uid)
-          .single();
+          .maybeSingle();
 
-      // User already exists, no action needed
-      return;
-    } catch (e) {
-      // User doesn't exist, create one
-      // Check if this is the first user (becomes Director)
+      if (existingUser != null) return;
+
       final users = await _supabase.from('users').select('id');
 
       final role = (users as List).isEmpty ? 'Director' : 'Manager';
@@ -116,6 +201,9 @@ class AuthService extends ChangeNotifier {
         'role': role,
         'created_at': DateTime.now().toIso8601String(),
       });
+    } catch (e) {
+      debugPrint('User setup failed: $e');
+      rethrow;
     }
   }
 
@@ -138,11 +226,20 @@ class AuthService extends ChangeNotifier {
   // Logout
   Future<void> logout() async {
     try {
-      await _googleSignIn.signOut();
+      await _userRoleChannel?.unsubscribe();
+      _userRoleChannel = null;
+
+      try {
+        await _googleSignIn.disconnect();
+      } catch (e) {
+        debugPrint('Google disconnect skipped: $e');
+      }
+
       await _firebaseAuth.signOut();
       _currentUser = null;
       _userRole = null;
       _error = null;
+      await _companyService.clearSelection();
       notifyListeners();
     } catch (e) {
       _error = 'Logout failed: $e';
@@ -153,6 +250,10 @@ class AuthService extends ChangeNotifier {
   // Change user role (Director/Co-Director only)
   Future<void> changeUserRole(String userId, String newRole) async {
     try {
+      if (!hasPermission('Co-Director')) {
+        throw Exception('Only Directors and Co-Directors can change roles');
+      }
+
       if (!['Director', 'Co-Director', 'Manager'].contains(newRole)) {
         throw Exception('Invalid role: $newRole');
       }
@@ -200,6 +301,26 @@ class AuthService extends ChangeNotifier {
     } catch (e) {
       debugPrint('Audit log failed: $e');
     }
+  }
+
+  // Update display name across Firebase + all companies' Supabase users tables
+  Future<void> updateDisplayName(String newName) async {
+    final user = _currentUser;
+    if (user == null) throw Exception('Not logged in');
+
+    await user.updateDisplayName(newName);
+    await user.reload();
+    _currentUser = _firebaseAuth.currentUser;
+
+    for (final company in _companyService.companies) {
+      final client = _companyService.clientFor(company.id);
+      await client
+          .from('users')
+          .update({'display_name': newName}).eq('id', user.uid);
+    }
+
+    await _logAudit('users', user.uid, 'UPDATE', {'display_name': newName});
+    notifyListeners();
   }
 
   // Check if user has permission

@@ -1,48 +1,29 @@
-// lib/screens/login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({Key? key}) : super(key: key);
+class LoginScreen extends StatelessWidget {
+  const LoginScreen({super.key});
 
-  @override
-  State<LoginScreen> createState() => _LoginScreenState();
-}
-
-class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: Colors.white,
       body: SafeArea(
         child: Consumer<AuthService>(
           builder: (context, authService, _) {
             return Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 32,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 32),
               child: Column(
                 children: [
                   const Spacer(flex: 2),
-
-                  // LOGO
-                  Container(
+                  SizedBox(
                     height: 100,
                     width: 100,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEAF2FF),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Image.asset(
-                      'assets/images/logo.jpeg',
-                      height: 100,
-                    ),
+                    child: Image.asset('assets/images/logo.png', height: 100),
                   ),
-
                   const SizedBox(height: 24),
-
-                  // APP NAME
                   const Text(
                     'Divit Plast',
                     style: TextStyle(
@@ -51,59 +32,42 @@ class _LoginScreenState extends State<LoginScreen> {
                       letterSpacing: -1,
                     ),
                   ),
-
                   const SizedBox(height: 8),
-
                   Text(
                     'Manufacturing Order Management',
                     style: TextStyle(
                       fontSize: 16,
-                      color: Colors.grey.shade600,
+                      color: cs.onSurface.withValues(alpha: 0.55),
                     ),
                   ),
-
                   const SizedBox(height: 60),
-
                   if (authService.error != null)
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
-                      margin: const EdgeInsets.only(
-                        bottom: 20,
-                      ),
+                      margin: const EdgeInsets.only(bottom: 20),
                       decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(
-                          12,
-                        ),
+                        color: cs.error.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         authService.error!,
-                        style: TextStyle(
-                          color: Colors.red.shade700,
-                        ),
+                        style: TextStyle(color: cs.error),
                       ),
                     ),
-
                   SizedBox(
                     width: double.infinity,
                     height: 56,
                     child: ElevatedButton(
                       onPressed: authService.isLoading
                           ? null
-                          : () {
-                              authService.signInWithGoogle();
-                            },
+                          : authService.signInWithGoogle,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(
-                          0xFF1565C0,
-                        ),
+                        backgroundColor: const Color(0xFF1565C0),
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            16,
-                          ),
+                          borderRadius: BorderRadius.circular(16),
                         ),
                       ),
                       child: authService.isLoading
@@ -118,12 +82,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           : const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(
-                                  Icons.login,
-                                ),
-                                SizedBox(
-                                  width: 12,
-                                ),
+                                Icon(Icons.login),
+                                SizedBox(width: 12),
                                 Text(
                                   'Sign in with Google',
                                   style: TextStyle(
@@ -135,9 +95,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                     ),
                   ),
-
-                  const SizedBox(height: 20),
-
                   const Spacer(flex: 3),
                 ],
               ),

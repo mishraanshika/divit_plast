@@ -1,6 +1,6 @@
 // lib/models/models.dart
 
-class User {
+class AppUser {
   final String id;
   final String email;
   final String displayName;
@@ -9,7 +9,7 @@ class User {
   final String? createdBy;
   final bool isDeleted;
 
-  User({
+  AppUser({
     required this.id,
     required this.email,
     required this.displayName,
@@ -19,10 +19,10 @@ class User {
     this.isDeleted = false,
   });
 
-  factory User.fromJson(Map<String, dynamic> json) {
-    return User(
-      id: json['id'],
-      email: json['email'],
+  factory AppUser.fromJson(Map<String, dynamic> json) {
+    return AppUser(
+      id: json['id'].toString(),
+      email: json['email'] ?? '',
       displayName: json['display_name'] ?? 'User',
       role: json['role'] ?? 'Manager',
       createdAt: DateTime.parse(json['created_at']),
@@ -57,7 +57,8 @@ class RawMaterial {
   final String placedbyUserName;
   final String enteredByUserId;
   final String enteredByUserName;
-  final String status; // Pending, Dispatched, Received
+  final String
+      status; // Pending, Partially Dispatched, Dispatched, Partially Received, Received
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final DateTime? deletedAt;
@@ -152,7 +153,8 @@ class SupplyOrder {
   final String placedByUserName;
   final String enteredByUserId;
   final String enteredByUserName;
-  final String status; // Received, In Progress, Dispatched, Delivered
+  final String
+      status; // Received, In Progress, Partially Dispatched, Dispatched, Partially Delivered, Delivered
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final DateTime? deletedAt;
@@ -248,7 +250,7 @@ class ProductionJob {
   final DateTime deliveryDate;
   final String enteredByUserId;
   final String enteredByUserName;
-  final String status; // Not Started, In Progress, Completed
+  final String status; // Not Started, In Progress, QC, Done
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final DateTime? deletedAt;
@@ -317,7 +319,7 @@ class ProductionJob {
       };
 
   bool get isOverdue =>
-      DateTime.now().isAfter(deliveryDate) && status != 'Completed';
+      DateTime.now().isAfter(deliveryDate) && status != 'Done';
 }
 
 class Machine {
@@ -387,13 +389,17 @@ class AuditLog {
 
   factory AuditLog.fromJson(Map<String, dynamic> json) {
     return AuditLog(
-      id: json['id'],
+      id: json['id'].toString(),
       tableName: json['table_name'],
-      recordId: json['record_id'],
+      recordId: json['record_id'].toString(),
       action: json['action'],
-      oldData: json['old_data'],
-      newData: json['new_data'],
-      performedBy: json['performed_by'],
+      oldData: json['old_data'] is Map
+          ? Map<String, dynamic>.from(json['old_data'] as Map)
+          : null,
+      newData: json['new_data'] is Map
+          ? Map<String, dynamic>.from(json['new_data'] as Map)
+          : null,
+      performedBy: json['performed_by']?.toString() ?? '',
       performedByName: json['performed_by_name'] ?? 'Unknown',
       createdAt: DateTime.parse(json['created_at']),
     );

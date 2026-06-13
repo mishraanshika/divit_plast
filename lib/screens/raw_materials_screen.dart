@@ -1,11 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:manufacturing_app/services/database_services.dart';
 import 'package:manufacturing_app/widget/date_field.dart';
 import 'package:manufacturing_app/widget/date_picker.dart';
 import 'package:manufacturing_app/widget/dropdown_field.dart';
 import 'package:manufacturing_app/widget/numeric_field.dart';
 import 'package:manufacturing_app/widget/text_field.dart';
+import 'package:manufacturing_app/widget/unit_field.dart';
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
@@ -21,8 +23,16 @@ class RawMaterialsScreen extends StatefulWidget {
 
 class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
   final DatabaseService _databaseService = DatabaseService();
+  static const List<String> _statusOptions = [
+    'Pending',
+    'Partially Dispatched',
+    'Dispatched',
+    'Partially Received',
+    'Received',
+  ];
 
   List<RawMaterial> _materials = [];
+  StreamSubscription<List<RawMaterial>>? _materialsSubscription;
 
   bool _loading = true;
 
@@ -36,7 +46,40 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadMaterials();
+    _subscribeMaterials();
+  }
+
+  @override
+  void dispose() {
+    _materialsSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _subscribeMaterials() {
+    setState(() => _loading = true);
+    _materialsSubscription?.cancel();
+    _materialsSubscription = _databaseService
+        .watchRawMaterials(
+      vendorFilter: _vendorFilter,
+      materialFilter: _materialFilter,
+      statusFilter: _statusFilter,
+      dateRangeStart: _startDate,
+      dateRangeEnd: _endDate,
+    )
+        .listen(
+      (materials) {
+        if (!mounted) return;
+        setState(() {
+          _materials = materials;
+          _loading = false;
+        });
+      },
+      onError: (Object error) {
+        debugPrint('Raw material stream error: $error');
+        if (!mounted) return;
+        setState(() => _loading = false);
+      },
+    );
   }
 
   Future<void> _loadMaterials() async {
@@ -51,11 +94,14 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
         dateRangeEnd: _endDate,
       );
 
+      if (!mounted) return;
       setState(() {
         _materials = materials;
       });
     } finally {
-      setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -68,22 +114,19 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
     final auth = context.watch<AuthService>();
 
     return Scaffold(
-      backgroundColor: const Color(0xffF5F5F5),
       appBar: AppBar(
-        backgroundColor: Colors.white,
         centerTitle: true,
-        title: const Text('Materials',
-            style: TextStyle(color: Colors.black, fontWeight: FontWeight.w500)),
+        title: const Text('Materials'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_alt, color: Colors.black54),
+            icon: const Icon(Icons.filter_alt),
             onPressed: _showFilterSheet,
           ),
         ],
       ),
       body: _buildBody(auth),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.blue,
+        backgroundColor: const Color(0xFF2196F3),
         foregroundColor: Colors.white,
         onPressed: () => _showMaterialForm(),
         child: const Icon(Icons.add),
@@ -147,15 +190,16 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
     RawMaterial item,
     AuthService auth,
   ) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           )
@@ -180,10 +224,8 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            "Vendor: ${item.vendorName}",
-            style: TextStyle(
-              color: Colors.grey.shade600,
-            ),
+            'Vendor: ${item.vendorName}',
+            style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6)),
           ),
           const SizedBox(height: 10),
           _infoRow(
@@ -199,39 +241,59 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
             "Delivery: ${DateFormat('yyyy-MM-dd').format(item.expectedDeliveryDate)}",
           ),
           const SizedBox(height: 14),
-          Divider(color: Colors.grey.shade200),
+          Divider(color: Theme.of(context).dividerColor),
           const SizedBox(height: 8),
-          Text(
-            "Change Status:",
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: _statusButton(
-                  item,
-                  "Pending",
-                  Colors.orange,
-                ),
+              Text(
+                'Status',
+                style: TextStyle(
+                    fontSize: 12, color: cs.onSurface.withValues(alpha: 0.65)),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _statusButton(
-                  item,
-                  "Dispatched",
-                  Colors.blue,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _statusButton(
-                  item,
-                  "Received",
-                  Colors.green,
+              const SizedBox(height: 8),
+              InkWell(
+                onTap: () => _showStatusPicker(item),
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: _statusColor(item.status).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color:
+                            _statusColor(item.status).withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: _statusColor(item.status),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          item.status,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: _statusColor(item.status),
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.unfold_more,
+                        size: 18,
+                        color: _statusColor(item.status).withValues(alpha: 0.7),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -245,8 +307,9 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
                   icon: const Icon(Icons.edit_outlined),
                   label: const Text("Edit"),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xffE3F2FD),
-                    foregroundColor: Colors.blue,
+                    backgroundColor: cs.primary.withValues(alpha: 0.12),
+                    foregroundColor: cs.primary,
+                    elevation: 0,
                   ),
                 ),
               ),
@@ -257,8 +320,9 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
                   icon: const Icon(Icons.delete_outline),
                   label: const Text("Delete"),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xffFFEBEE),
-                    foregroundColor: Colors.red,
+                    backgroundColor: cs.error.withValues(alpha: 0.12),
+                    foregroundColor: cs.error,
+                    elevation: 0,
                   ),
                 ),
               ),
@@ -272,18 +336,7 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
   Widget _statusBadge(String status) {
     Color color;
 
-    switch (status) {
-      case 'Dispatched':
-        color = Colors.blue;
-        break;
-
-      case 'Received':
-        color = Colors.green;
-        break;
-
-      default:
-        color = Colors.orange;
-    }
+    color = _statusColor(status);
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -298,74 +351,129 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
         status,
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 11,
+          fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
       ),
     );
   }
 
-  Widget _infoRow(
-    IconData icon,
-    String text,
-  ) {
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'Partially Dispatched':
+        return Colors.lightBlue.shade700;
+      case 'Dispatched':
+        return Colors.blue;
+      case 'Partially Received':
+        return Colors.teal;
+      case 'Received':
+        return Colors.green;
+      default:
+        return Colors.orange;
+    }
+  }
+
+  Widget _infoRow(IconData icon, String text) {
+    final cs = Theme.of(context).colorScheme;
     return Row(
       children: [
-        Icon(
-          icon,
-          size: 15,
-          color: Colors.grey,
-        ),
+        Icon(icon, size: 15, color: cs.onSurface.withValues(alpha: 0.45)),
         const SizedBox(width: 8),
-        Text(
-          text,
-          style: TextStyle(
-            color: Colors.grey.shade700,
-          ),
-        ),
+        Text(text,
+            style: TextStyle(color: cs.onSurface.withValues(alpha: 0.7))),
       ],
     );
   }
 
-  Widget _statusButton(
-    RawMaterial item,
-    String status,
-    Color color,
-  ) {
-    final selected = item.status == status;
-    final auth = Provider.of<AuthService>(
-      context,
-      listen: false,
-    );
+  Future<void> _showStatusPicker(RawMaterial item) async {
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final cs = Theme.of(context).colorScheme;
+    final screenHeight = MediaQuery.of(context).size.height;
 
-    return GestureDetector(
-      onTap: () async {
-        await _databaseService.updateRawMaterialStatus(
-          item.id!,
-          status,
-          auth.currentUser!.uid,
-        );
-
-        _loadMaterials();
-      },
-      child: Container(
-        height: 34,
-        decoration: BoxDecoration(
-          color: selected ? color : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Center(
-          child: Text(
-            status,
-            style: TextStyle(
-              color: selected ? Colors.white : Colors.black54,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: screenHeight * 0.55),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 4),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: cs.outline.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Change Status',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  IconButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      icon: const Icon(Icons.close)),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: cs.outlineVariant),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: _statusOptions.map((status) {
+                  final isCurrent = item.status == status;
+                  final color = _statusColor(status);
+                  return InkWell(
+                    onTap: () => Navigator.pop(ctx, status),
+                    child: Container(
+                      color: isCurrent
+                          ? color.withValues(alpha: 0.1)
+                          : Colors.transparent,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 16),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                                color: color, shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text(
+                              status,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: isCurrent
+                                    ? FontWeight.w700
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+                          if (isCurrent)
+                            Icon(Icons.check, color: color, size: 20),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
         ),
       ),
     );
+
+    if (selected == null || selected == item.status) return;
+    await _databaseService.updateRawMaterialStatus(
+        item.id!, selected, auth.currentUser!.uid);
+    _loadMaterials();
   }
 
   Future<void> _showMaterialForm({
@@ -405,29 +513,26 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(24),
-        ),
-      ),
+      useSafeArea: true,
       builder: (_) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            return Container(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-              ),
-              child: SingleChildScrollView(
-                child: Form(
-                    key: formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+            return DraggableScrollableSheet(
+              initialChildSize: 0.9,
+              minChildSize: 0.3,
+              maxChildSize: 0.95,
+              expand: false,
+              builder: (context, scrollController) {
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewInsets.bottom,
+                  ),
+                  child: Column(
+                    children: [
+                      // ── Sticky Header ──────────────────────────────
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                        child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
@@ -447,198 +552,241 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 24),
-                        AppFormField(
-                          label: 'Material Name',
-                          controller: materialController,
-                          required: true,
-                          errorMessage: 'Material name is required',
-                        ),
-                        const SizedBox(height: 16),
-                        AppFormField(
-                          label: 'Vendor Name',
-                          controller: vendorController,
-                          required: true,
-                          errorMessage: 'Vendor name is required',
-                        ),
-                        const SizedBox(height: 16),
-                        AppNumberField(
-                          label: 'Quantity',
-                          controller: quantityController,
-                          required: true,
-                        ),
-                        const SizedBox(height: 16),
-                        AppFormField(
-                          label: 'Unit',
-                          controller: unitController,
-                        ),
-                        const SizedBox(height: 16),
-                        AppFormField(
-                          label: 'Bill Number',
-                          controller: billNumberController,
-                        ),
-                        const SizedBox(height: 16),
-                        AppNumberField(
-                          label: 'Bill Amount',
-                          controller: billAmountController,
-                        ),
-                        const SizedBox(height: 16),
-                        AppDateField(
-                          label: 'Order Date',
-                          date: orderDate,
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: orderDate,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2100),
-                            );
-
-                            if (picked != null) {
-                              setDialogState(() {
-                                orderDate = picked;
-                              });
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        AppDateField(
-                          label: 'Expected Dispatch Date *',
-                          date: dispatchDate,
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: dispatchDate,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2100),
-                            );
-
-                            if (picked != null) {
-                              setDialogState(() {
-                                dispatchDate = picked;
-                              });
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        AppDateField(
-                          label: 'Expected Delivery Date *',
-                          date: deliveryDate,
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: deliveryDate,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2100),
-                            );
-
-                            if (picked != null) {
-                              setDialogState(() {
-                                deliveryDate = picked;
-                              });
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 24),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: SizedBox(
-                                height: 48,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.grey.shade200,
-                                    foregroundColor: Colors.black54,
-                                    elevation: 0,
+                      ),
+                      const SizedBox(height: 8),
+                      Divider(height: 1, color: Theme.of(context).dividerColor),
+                      // ── Scrollable Form Body ─────────────────────
+                      Expanded(
+                        child: SingleChildScrollView(
+                          controller: scrollController,
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                          child: Form(
+                              key: formKey,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  AppFormField(
+                                    label: 'Material Name',
+                                    controller: materialController,
+                                    required: true,
+                                    errorMessage: 'Material name is required',
                                   ),
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                  },
-                                  child: const Text('Cancel'),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: SizedBox(
-                                height: 48,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xffFF9800),
-                                    foregroundColor: Colors.white,
+                                  const SizedBox(height: 16),
+                                  AppFormField(
+                                    label: 'Vendor Name',
+                                    controller: vendorController,
+                                    required: true,
+                                    errorMessage: 'Vendor name is required',
                                   ),
-                                  onPressed: () async {
-                                    if (!formKey.currentState!.validate()) {
-                                      return;
-                                    }
-
-                                    final item = RawMaterial(
-                                      id: material?.id,
-                                      materialName: materialController.text,
-                                      vendorName: vendorController.text,
-                                      quantity: double.parse(
-                                        quantityController.text,
-                                      ),
-                                      unit: unitController.text,
-                                      orderDate: orderDate,
-                                      billNumber: billNumberController.text,
-                                      billAmount:
-                                          billAmountController.text.isEmpty
-                                              ? null
-                                              : double.parse(
-                                                  billAmountController.text,
-                                                ),
-                                      expectedDispatchDate: dispatchDate,
-                                      expectedDeliveryDate: deliveryDate,
-                                      placedByUserId: auth.currentUser!.uid,
-                                      placedbyUserName:
-                                          auth.currentUser!.displayName ?? '',
-                                      enteredByUserId: auth.currentUser!.uid,
-                                      enteredByUserName:
-                                          auth.currentUser!.displayName ?? '',
-                                      status: status,
-                                    );
-
-                                    try {
-                                      if (material == null) {
-                                        await _databaseService
-                                            .createRawMaterial(
-                                          item,
-                                          auth.currentUser!.uid,
-                                        );
-                                      } else {
-                                        await _databaseService
-                                            .updateRawMaterial(
-                                          material.id!,
-                                          item,
-                                          auth.currentUser!.uid,
-                                        );
-                                      }
-
-                                      Navigator.pop(context);
-
-                                      _loadMaterials();
-                                    } catch (e) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(e.toString()),
-                                        ),
+                                  const SizedBox(height: 16),
+                                  AppNumberField(
+                                    label: 'Quantity',
+                                    controller: quantityController,
+                                    required: true,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  AppUnitField(
+                                    label: 'Unit',
+                                    controller: unitController,
+                                    required: true,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  AppFormField(
+                                    label: 'Bill Number',
+                                    controller: billNumberController,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  AppNumberField(
+                                    label: 'Bill Amount',
+                                    controller: billAmountController,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  AppDateField(
+                                    label: 'Order Date',
+                                    date: orderDate,
+                                    onTap: () async {
+                                      final picked = await showDatePicker(
+                                        context: context,
+                                        initialDate: orderDate,
+                                        firstDate: DateTime(2020),
+                                        lastDate: DateTime(2100),
                                       );
-                                    }
-                                  },
-                                  child: Text(
-                                    material == null ? 'Create' : 'Update',
+
+                                      if (picked != null) {
+                                        setDialogState(() {
+                                          orderDate = picked;
+                                        });
+                                      }
+                                    },
                                   ),
-                                ),
-                              ),
-                            ),
-                          ],
+                                  const SizedBox(height: 16),
+                                  AppDateField(
+                                    label: 'Expected Dispatch Date *',
+                                    date: dispatchDate,
+                                    onTap: () async {
+                                      final picked = await showDatePicker(
+                                        context: context,
+                                        initialDate: dispatchDate,
+                                        firstDate: DateTime(2020),
+                                        lastDate: DateTime(2100),
+                                      );
+
+                                      if (picked != null) {
+                                        setDialogState(() {
+                                          dispatchDate = picked;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                  const SizedBox(height: 16),
+                                  AppDateField(
+                                    label: 'Expected Delivery Date *',
+                                    date: deliveryDate,
+                                    onTap: () async {
+                                      final picked = await showDatePicker(
+                                        context: context,
+                                        initialDate: deliveryDate,
+                                        firstDate: DateTime(2020),
+                                        lastDate: DateTime(2100),
+                                      );
+
+                                      if (picked != null) {
+                                        setDialogState(() {
+                                          deliveryDate = picked;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                  const SizedBox(height: 24),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: SizedBox(
+                                          height: 48,
+                                          child: ElevatedButton(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Theme.of(context)
+                                                  .colorScheme
+                                                  .surfaceContainerHighest,
+                                              foregroundColor: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface
+                                                  .withValues(alpha: 0.7),
+                                              elevation: 0,
+                                            ),
+                                            onPressed: () {
+                                              Navigator.pop(context);
+                                            },
+                                            child: const Text('Cancel'),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: SizedBox(
+                                          height: 48,
+                                          child: ElevatedButton(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  const Color(0xffFF9800),
+                                              foregroundColor: Colors.white,
+                                            ),
+                                            onPressed: () async {
+                                              if (!formKey.currentState!
+                                                  .validate()) {
+                                                return;
+                                              }
+
+                                              final item = RawMaterial(
+                                                id: material?.id,
+                                                materialName:
+                                                    materialController.text,
+                                                vendorName:
+                                                    vendorController.text,
+                                                quantity: double.parse(
+                                                  quantityController.text,
+                                                ),
+                                                unit: unitController.text,
+                                                orderDate: orderDate,
+                                                billNumber:
+                                                    billNumberController.text,
+                                                billAmount: billAmountController
+                                                        .text.isEmpty
+                                                    ? null
+                                                    : double.parse(
+                                                        billAmountController
+                                                            .text,
+                                                      ),
+                                                expectedDispatchDate:
+                                                    dispatchDate,
+                                                expectedDeliveryDate:
+                                                    deliveryDate,
+                                                placedByUserId:
+                                                    auth.currentUser!.uid,
+                                                placedbyUserName: auth
+                                                        .currentUser!
+                                                        .displayName ??
+                                                    '',
+                                                enteredByUserId:
+                                                    auth.currentUser!.uid,
+                                                enteredByUserName: auth
+                                                        .currentUser!
+                                                        .displayName ??
+                                                    '',
+                                                status: status,
+                                              );
+
+                                              try {
+                                                if (material == null) {
+                                                  await _databaseService
+                                                      .createRawMaterial(
+                                                    item,
+                                                    auth.currentUser!.uid,
+                                                  );
+                                                } else {
+                                                  await _databaseService
+                                                      .updateRawMaterial(
+                                                    material.id!,
+                                                    item,
+                                                    auth.currentUser!.uid,
+                                                  );
+                                                }
+
+                                                if (!context.mounted) return;
+
+                                                Navigator.pop(context);
+                                                _loadMaterials();
+                                              } catch (e) {
+                                                if (!context.mounted) return;
+
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(e.toString()),
+                                                  ),
+                                                );
+                                              }
+                                            },
+                                            child: Text(
+                                              material == null
+                                                  ? 'Create'
+                                                  : 'Update',
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 24),
+                                ],
+                              )),
                         ),
-                      ],
-                    )),
-              ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             );
           },
         );
@@ -656,7 +804,6 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
       builder: (context) {
         return AlertDialog(
           insetPadding: const EdgeInsets.symmetric(horizontal: 40),
-          backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -675,13 +822,7 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
               ),
             ],
           ),
-          content: Text(
-            'Delete "${item.materialName}" order?',
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              height: 2.4,
-            ),
-          ),
+          content: Text('Delete "${item.materialName}" order?'),
           actionsPadding: const EdgeInsets.fromLTRB(
             20,
             0,
@@ -770,29 +911,18 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
     String? tempStatus = _statusFilter;
 
     showModalBottomSheet(
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(24),
-        ),
-      ),
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            return Container(
+            return Padding(
               padding: EdgeInsets.only(
                 left: 20,
                 right: 20,
                 top: 20,
                 bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-              ),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(24),
-                ),
               ),
               child: SingleChildScrollView(
                 child: Column(
@@ -830,20 +960,14 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
                     AppDropdownField<String>(
                       label: 'Status',
                       value: tempStatus,
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'Pending',
-                          child: Text('Pending'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Dispatched',
-                          child: Text('Dispatched'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Received',
-                          child: Text('Received'),
-                        ),
-                      ],
+                      items: _statusOptions
+                          .map(
+                            (status) => DropdownMenuItem(
+                              value: status,
+                              child: Text(status),
+                            ),
+                          )
+                          .toList(),
                       onChanged: (value) {
                         setSheetState(() {
                           tempStatus = value;
@@ -893,14 +1017,15 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
                             child: ElevatedButton(
                               style: ElevatedButton.styleFrom(
                                 elevation: 0,
-                                backgroundColor: const Color(
-                                  0xffF2F2F2,
-                                ),
-                                foregroundColor: Colors.grey.shade700,
+                                backgroundColor: Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainerHighest,
+                                foregroundColor: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.7),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    8,
-                                  ),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
                               onPressed: () {
@@ -914,7 +1039,7 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
 
                                 Navigator.pop(context);
 
-                                _loadMaterials();
+                                _subscribeMaterials();
                               },
                               child: const Text(
                                 'Clear',
@@ -955,7 +1080,7 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
 
                                 Navigator.pop(context);
 
-                                _loadMaterials();
+                                _subscribeMaterials();
                               },
                               child: const Text(
                                 'Apply',
