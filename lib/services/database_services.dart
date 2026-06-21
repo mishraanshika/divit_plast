@@ -190,6 +190,106 @@ class DatabaseService {
     }
   }
 
+  Future<void> splitRawMaterialForPartialDispatch(
+    RawMaterial item,
+    double dispatchedQuantity,
+    String userId,
+  ) async {
+    if (item.id == null) {
+      throw Exception('Missing raw material id');
+    }
+
+    if (dispatchedQuantity <= 0 || dispatchedQuantity >= item.quantity) {
+      throw Exception('Dispatched quantity must be less than total quantity');
+    }
+
+    final remainingQuantity = item.quantity - dispatchedQuantity;
+
+    final remainingItem = RawMaterial(
+      id: item.id,
+      materialName: item.materialName,
+      vendorName: item.vendorName,
+      quantity: remainingQuantity,
+      unit: item.unit,
+      orderDate: item.orderDate,
+      billNumber: item.billNumber,
+      billAmount: item.billAmount,
+      expectedDispatchDate: item.expectedDispatchDate,
+      expectedDeliveryDate: item.expectedDeliveryDate,
+      placedByUserId: item.placedByUserId,
+      placedbyUserName: item.placedbyUserName,
+      enteredByUserId: item.enteredByUserId,
+      enteredByUserName: item.enteredByUserName,
+      status: 'Pending',
+    );
+
+    final dispatchedItem = RawMaterial(
+      materialName: item.materialName,
+      vendorName: item.vendorName,
+      quantity: dispatchedQuantity,
+      unit: item.unit,
+      orderDate: item.orderDate,
+      billNumber: item.billNumber,
+      billAmount: item.billAmount,
+      expectedDispatchDate: item.expectedDispatchDate,
+      expectedDeliveryDate: item.expectedDeliveryDate,
+      placedByUserId: item.placedByUserId,
+      placedbyUserName: item.placedbyUserName,
+      enteredByUserId: item.enteredByUserId,
+      enteredByUserName: item.enteredByUserName,
+      status: 'Dispatched',
+    );
+
+    try {
+      await updateRawMaterial(item.id!, remainingItem, userId);
+
+      final createdDispatched = await _supabase
+          .from('raw_materials')
+          .insert({
+            ...dispatchedItem.toJson(),
+            'entered_by_user_id': dispatchedItem.enteredByUserId,
+          })
+          .select()
+          .single();
+
+      await _logAudit(
+        'raw_materials',
+        createdDispatched['id'].toString(),
+        'CREATE',
+        dispatchedItem.toJson(),
+        userId,
+      );
+
+      await _logAudit(
+        'raw_materials',
+        item.id!,
+        'SPLIT_PARTIAL_DISPATCH',
+        {
+          'dispatched_quantity': dispatchedQuantity,
+          'remaining_quantity': remainingQuantity,
+          'dispatched_order_id': createdDispatched['id'].toString(),
+        },
+        userId,
+      );
+    } catch (e) {
+      debugPrint('Error splitting raw material: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<RawMaterial>> getSupplierOrders(String supplierName) async {
+    final data = await _supabase
+        .from('raw_materials')
+        .select()
+        .eq('is_deleted', false)
+        .eq('vendor_name', supplierName)
+        .order('expected_delivery_date');
+
+    return (data as List)
+        .map((e) => RawMaterial.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
   // ============ SUPPLY ORDERS ============
 
   Future<List<SupplyOrder>> getSupplyOrders({
@@ -346,6 +446,110 @@ class DatabaseService {
       debugPrint('Error updating supply order status: $e');
       rethrow;
     }
+  }
+
+  Future<void> splitSupplyOrderForPartialDispatch(
+    SupplyOrder order,
+    double dispatchedQuantity,
+    String userId,
+  ) async {
+    if (order.id == null) {
+      throw Exception('Missing supply order id');
+    }
+
+    if (dispatchedQuantity <= 0 || dispatchedQuantity >= order.quantity) {
+      throw Exception('Dispatched quantity must be less than total quantity');
+    }
+
+    final remainingQuantity = order.quantity - dispatchedQuantity;
+
+    final remainingOrder = SupplyOrder(
+      id: order.id,
+      orderReceivedDate: order.orderReceivedDate,
+      orderDate: order.orderDate,
+      customerName: order.customerName,
+      materialProduct: order.materialProduct,
+      quantity: remainingQuantity,
+      unit: order.unit,
+      poNumber: order.poNumber,
+      trayBatchNumber: order.trayBatchNumber,
+      billNumber: order.billNumber,
+      billAmount: order.billAmount,
+      deliveryDate: order.deliveryDate,
+      placedByUserId: order.placedByUserId,
+      placedByUserName: order.placedByUserName,
+      enteredByUserId: order.enteredByUserId,
+      enteredByUserName: order.enteredByUserName,
+      status: 'Pending',
+    );
+
+    final dispatchedOrder = SupplyOrder(
+      orderReceivedDate: order.orderReceivedDate,
+      orderDate: order.orderDate,
+      customerName: order.customerName,
+      materialProduct: order.materialProduct,
+      quantity: dispatchedQuantity,
+      unit: order.unit,
+      poNumber: order.poNumber,
+      trayBatchNumber: order.trayBatchNumber,
+      billNumber: order.billNumber,
+      billAmount: order.billAmount,
+      deliveryDate: order.deliveryDate,
+      placedByUserId: order.placedByUserId,
+      placedByUserName: order.placedByUserName,
+      enteredByUserId: order.enteredByUserId,
+      enteredByUserName: order.enteredByUserName,
+      status: 'Dispatched',
+    );
+
+    try {
+      await updateSupplyOrder(order.id!, remainingOrder, userId);
+
+      final createdDispatched = await _supabase
+          .from('customer_supply_orders')
+          .insert({
+            ...dispatchedOrder.toJson(),
+            'entered_by_user_id': dispatchedOrder.enteredByUserId,
+          })
+          .select()
+          .single();
+
+      await _logAudit(
+        'customer_supply_orders',
+        createdDispatched['id'].toString(),
+        'CREATE',
+        dispatchedOrder.toJson(),
+        userId,
+      );
+
+      await _logAudit(
+        'customer_supply_orders',
+        order.id!,
+        'SPLIT_PARTIAL_DISPATCH',
+        {
+          'dispatched_quantity': dispatchedQuantity,
+          'remaining_quantity': remainingQuantity,
+          'dispatched_order_id': createdDispatched['id'].toString(),
+        },
+        userId,
+      );
+    } catch (e) {
+      debugPrint('Error splitting supply order: $e');
+      rethrow;
+    }
+  }
+
+  Future<List<SupplyOrder>> getCustomerOrders(String customerName) async {
+    final data = await _supabase
+        .from('customer_supply_orders')
+        .select()
+        .eq('is_deleted', false)
+        .eq('customer_name', customerName)
+        .order('delivery_date');
+
+    return (data as List)
+        .map((e) => SupplyOrder.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
   }
 
   // ============ PRODUCTION JOBS ============
@@ -867,5 +1071,240 @@ class DatabaseService {
 
   bool _isSameDate(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+// ====== CUSTOMERS =======
+
+  Future<List<Customer>> getCustomers() async {
+    try {
+      final data = await _supabase
+          .from('customers')
+          .select()
+          .eq('is_deleted', false)
+          .order('name');
+
+      return (data as List)
+          .map((e) => Customer.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (e) {
+      debugPrint('Error fetching customers: $e');
+      return [];
+    }
+  }
+
+  Stream<List<Customer>> watchCustomers() {
+    return _supabase
+        .from('customers')
+        .stream(primaryKey: ['id'])
+        .eq('is_deleted', false)
+        .order('name')
+        .map(
+          (rows) => rows.map(Customer.fromJson).toList(),
+        );
+  }
+
+  Future<Customer?> getCustomerById(String id) async {
+    try {
+      final data =
+          await _supabase.from('customers').select().eq('id', id).single();
+
+      return Customer.fromJson(data);
+    } catch (e) {
+      debugPrint('Error fetching customer: $e');
+      return null;
+    }
+  }
+
+  Future<String> createCustomer(Customer customer, String userId) async {
+    try {
+      final json = customer.toJson();
+
+      final response =
+          await _supabase.from('customers').insert(json).select().single();
+
+      await _logAudit(
+        'customers',
+        response['id'].toString(),
+        'CREATE',
+        json,
+        userId,
+      );
+
+      return response['id'].toString();
+    } catch (e) {
+      debugPrint('Error creating customer: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateCustomer(
+    String id,
+    Customer customer,
+    String userId,
+  ) async {
+    try {
+      final json = customer.toJson();
+
+      await _supabase.from('customers').update({
+        ...json,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', id);
+
+      await _logAudit(
+        'customers',
+        id,
+        'UPDATE',
+        json,
+        userId,
+      );
+    } catch (e) {
+      debugPrint('Error updating customer: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteCustomer(
+    String id,
+    String userId,
+  ) async {
+    try {
+      final oldRecord =
+          await _supabase.from('customers').select().eq('id', id).single();
+
+      await _supabase.from('customers').update({
+        'is_deleted': true,
+        'deleted_at': DateTime.now().toIso8601String(),
+      }).eq('id', id);
+
+      await _logAudit(
+        'customers',
+        id,
+        'DELETE',
+        Map<String, dynamic>.from(oldRecord),
+        userId,
+      );
+    } catch (e) {
+      debugPrint('Error deleting customer: $e');
+      rethrow;
+    }
+  }
+
+// ====== SUPPLIERS =======
+
+  Future<List<Supplier>> getSuppliers() async {
+    try {
+      final data = await _supabase
+          .from('suppliers')
+          .select()
+          .eq('is_deleted', false)
+          .order('name');
+
+      return (data as List)
+          .map((e) => Supplier.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (e) {
+      debugPrint('Error fetching suppliers: $e');
+      return [];
+    }
+  }
+
+  Stream<List<Supplier>> watchSuppliers() {
+    return _supabase
+        .from('suppliers')
+        .stream(primaryKey: ['id'])
+        .eq('is_deleted', false)
+        .order('name')
+        .map(
+          (rows) => rows.map(Supplier.fromJson).toList(),
+        );
+  }
+
+  Future<Supplier?> getSupplierById(String id) async {
+    try {
+      final data =
+          await _supabase.from('suppliers').select().eq('id', id).single();
+
+      return Supplier.fromJson(data);
+    } catch (e) {
+      debugPrint('Error fetching supplier: $e');
+      return null;
+    }
+  }
+
+  Future<String> createSupplier(
+    Supplier supplier,
+    String userId,
+  ) async {
+    try {
+      final json = supplier.toJson();
+
+      final response =
+          await _supabase.from('suppliers').insert(json).select().single();
+
+      await _logAudit(
+        'suppliers',
+        response['id'].toString(),
+        'CREATE',
+        json,
+        userId,
+      );
+
+      return response['id'].toString();
+    } catch (e) {
+      debugPrint('Error creating supplier: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateSupplier(
+    String id,
+    Supplier supplier,
+    String userId,
+  ) async {
+    try {
+      final json = supplier.toJson();
+
+      await _supabase.from('suppliers').update({
+        ...json,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', id);
+
+      await _logAudit(
+        'suppliers',
+        id,
+        'UPDATE',
+        json,
+        userId,
+      );
+    } catch (e) {
+      debugPrint('Error updating supplier: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteSupplier(
+    String id,
+    String userId,
+  ) async {
+    try {
+      final oldRecord =
+          await _supabase.from('suppliers').select().eq('id', id).single();
+
+      await _supabase.from('suppliers').update({
+        'is_deleted': true,
+        'deleted_at': DateTime.now().toIso8601String(),
+      }).eq('id', id);
+
+      await _logAudit(
+        'suppliers',
+        id,
+        'DELETE',
+        Map<String, dynamic>.from(oldRecord),
+        userId,
+      );
+    } catch (e) {
+      debugPrint('Error deleting supplier: $e');
+      rethrow;
+    }
   }
 }

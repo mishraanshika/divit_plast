@@ -15,7 +15,16 @@ import '../services/database_services.dart';
 import '../services/auth_service.dart';
 
 class RawMaterialsScreen extends StatefulWidget {
-  const RawMaterialsScreen({super.key});
+  const RawMaterialsScreen({
+    super.key,
+    this.initialVendorName,
+    this.lockVendorFilter = false,
+    this.title = 'Materials',
+  });
+
+  final String? initialVendorName;
+  final bool lockVendorFilter;
+  final String title;
 
   @override
   State<RawMaterialsScreen> createState() => _RawMaterialsScreenState();
@@ -23,6 +32,7 @@ class RawMaterialsScreen extends StatefulWidget {
 
 class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
   final DatabaseService _databaseService = DatabaseService();
+
   static const List<String> _statusOptions = [
     'Pending',
     'Partially Dispatched',
@@ -46,6 +56,7 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
   @override
   void initState() {
     super.initState();
+    _vendorFilter = widget.initialVendorName;
     _subscribeMaterials();
   }
 
@@ -116,13 +127,15 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: const Text('Materials'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_alt),
-            onPressed: _showFilterSheet,
-          ),
-        ],
+        title: Text(widget.title),
+        actions: widget.lockVendorFilter
+            ? null
+            : [
+                IconButton(
+                  icon: const Icon(Icons.filter_alt),
+                  onPressed: _showFilterSheet,
+                ),
+              ],
       ),
       body: _buildBody(auth),
       floatingActionButton: FloatingActionButton(
@@ -471,9 +484,161 @@ class _RawMaterialsScreenState extends State<RawMaterialsScreen> {
     );
 
     if (selected == null || selected == item.status) return;
-    await _databaseService.updateRawMaterialStatus(
-        item.id!, selected, auth.currentUser!.uid);
-    _loadMaterials();
+    try {
+      if (selected == 'Partially Dispatched') {
+        final dispatchedQuantity =
+            await _promptPartialDispatchQuantity(
+          title: item.materialName,
+          totalQuantity: item.quantity,
+          unit: item.unit,
+        );
+
+        if (dispatchedQuantity == null) return;
+
+        await _databaseService.splitRawMaterialForPartialDispatch(
+          item,
+          dispatchedQuantity,
+          auth.currentUser!.uid,
+        );
+      } else {
+        await _databaseService.updateRawMaterialStatus(
+          item.id!,
+          selected,
+          auth.currentUser!.uid,
+        );
+      }
+
+      await _loadMaterials();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update status: $e')),
+      );
+    }
+  }
+
+  Future<double?> _promptPartialDispatchQuantity({
+    required String title,
+    required double totalQuantity,
+    required String unit,
+  }) async {
+    final controller = TextEditingController();
+
+    return showDialog<double>(
+      context: context,
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 32),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+          contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          title: const Row(
+            children: [
+              Icon(Icons.local_shipping_outlined, color: Color(0xFF2196F3)),
+              SizedBox(width: 8),
+              Text(
+                'Partial Dispatch',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Total quantity: $totalQuantity $unit',
+                style: TextStyle(
+                  color: cs.onSurface.withValues(alpha: 0.7),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Container(
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: TextField(
+                  controller: controller,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Dispatched quantity',
+                    hintText: 'Enter quantity in $unit',
+                    prefixIcon: const Icon(Icons.inventory_2_outlined),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            SizedBox(
+              width: 110,
+              height: 42,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF2196F3),
+                  side: const BorderSide(color: Color(0xFF2196F3)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+            ),
+            SizedBox(
+              width: 130,
+              height: 42,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  elevation: 0,
+                  backgroundColor: const Color(0xFF2196F3),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: () {
+                  final value = double.tryParse(controller.text.trim());
+                  if (value == null || value <= 0 || value >= totalQuantity) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Enter a quantity greater than 0 and less than $totalQuantity',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+
+                  Navigator.pop(context, value);
+                },
+                child: const Text('Split Order'),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _showMaterialForm({

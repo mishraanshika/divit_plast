@@ -405,3 +405,87 @@ class AuditLog {
     );
   }
 }
+
+class Customer {
+  final String? id;
+  final String name;
+  final String address;
+  final String gstin;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final bool isDeleted;
+
+  Customer({
+    this.id,
+    required this.name,
+    required this.address,
+    required this.gstin,
+    this.createdAt,
+    this.updatedAt,
+    this.isDeleted = false,
+  });
+
+  factory Customer.fromJson(Map<String, dynamic> json) {
+    return Customer(
+      id: json['id'],
+      name: json['name'] ?? '',
+      address: json['address'] ?? '',
+      gstin: json['gstin'] ?? '',
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : null,
+      isDeleted: json['is_deleted'] ?? false,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'address': address,
+        'gstin': gstin,
+      };
+}
+
+class Supplier {
+  final String? id;
+  final String name;
+  final String address;
+  final String gstin;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final bool isDeleted;
+
+  Supplier({
+    this.id,
+    required this.name,
+    required this.address,
+    required this.gstin,
+    this.createdAt,
+    this.updatedAt,
+    this.isDeleted = false,
+  });
+
+  factory Supplier.fromJson(Map<String, dynamic> json) {
+    return Supplier(
+      id: json['id'],
+      name: json['name'] ?? '',
+      address: json['address'] ?? '',
+      gstin: json['gstin'] ?? '',
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : null,
+      isDeleted: json['is_deleted'] ?? false,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'address': address,
+        'gstin': gstin,
+      };
+}

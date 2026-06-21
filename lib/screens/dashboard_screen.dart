@@ -9,6 +9,7 @@ import 'production_screen.dart';
 import 'settings_screen.dart';
 import '../services/database_services.dart';
 import '../services/company_service.dart';
+import 'details_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -36,18 +37,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _BottomNavItem(
             icon: Icons.inventory_2_outlined,
             activeIcon: Icons.inventory_2,
-            label: 'Materials',
+            label: 'Raw Materials',
           ),
           _BottomNavItem(
-            icon: Icons.people_outline,
-            activeIcon: Icons.people,
-            label: 'Customers',
+            icon: Icons.assignment_outlined,
+            activeIcon: Icons.assignment,
+            label: 'Orders',
           ),
           _BottomNavItem(
-            icon: Icons.precision_manufacturing_outlined,
-            activeIcon: Icons.precision_manufacturing,
-            label: 'Production',
-          ),
+              icon: Icons.badge_outlined,
+              activeIcon: Icons.badge,
+              label: 'Details'),
+          //_BottomNavItem(
+          //  icon: Icons.precision_manufacturing_outlined,
+          //  activeIcon: Icons.precision_manufacturing,
+          //  label: 'Production',
+          //),
           _BottomNavItem(
             icon: Icons.settings_outlined,
             activeIcon: Icons.settings,
@@ -62,7 +67,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           RawMaterialsScreen(key: ValueKey('$companyId-materials')),
           SupplyOrdersScreen(key: ValueKey('$companyId-customers')),
-          ProductionScreen(key: ValueKey('$companyId-production')),
+          //ProductionScreen(key: ValueKey('$companyId-production')),
+          DetailsScreen(key: ValueKey('$companyId-details')),
           SettingsScreen(key: ValueKey('$companyId-settings')),
         ];
 
@@ -396,20 +402,20 @@ class _HomeTabState extends State<HomeTab> {
                 ),
                 const SizedBox(height: 14),
                 DashboardCard(
-                  icon: Icons.people_outline,
+                  icon: Icons.assignment_outlined,
                   count: pendingSupplyOrders.toString(),
                   title: 'Pending Customer Orders',
                   color: const Color(0xFF2196F3),
                   onTap: () => widget.onNavigate?.call(2),
                 ),
                 const SizedBox(height: 14),
-                DashboardCard(
-                  icon: Icons.engineering_outlined,
-                  count: activeProductionJobs.toString(),
-                  title: 'Active Production Jobs',
-                  color: const Color(0xFF4CAF50),
-                  onTap: () => widget.onNavigate?.call(3),
-                ),
+                //DashboardCard(
+                //  icon: Icons.engineering_outlined,
+                //  count: activeProductionJobs.toString(),
+                //  title: 'Active Production Jobs',
+                //  color: const Color(0xFF4CAF50),
+                //  onTap: () => widget.onNavigate?.call(3),
+                //),
               ],
             ),
           ),
