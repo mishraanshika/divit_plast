@@ -263,8 +263,9 @@ class DatabaseService {
       await _logAudit(
         'raw_materials',
         item.id!,
-        'SPLIT_PARTIAL_DISPATCH',
+        'UPDATE',
         {
+          'event': 'SPLIT_PARTIAL_DISPATCH',
           'dispatched_quantity': dispatchedQuantity,
           'remaining_quantity': remainingQuantity,
           'dispatched_order_id': createdDispatched['id'].toString(),
@@ -448,20 +449,20 @@ class DatabaseService {
     }
   }
 
-  Future<void> splitSupplyOrderForPartialDispatch(
+  Future<void> splitSupplyOrderForPartialDelivery(
     SupplyOrder order,
-    double dispatchedQuantity,
+    double deliveredQuantity,
     String userId,
   ) async {
     if (order.id == null) {
       throw Exception('Missing supply order id');
     }
 
-    if (dispatchedQuantity <= 0 || dispatchedQuantity >= order.quantity) {
-      throw Exception('Dispatched quantity must be less than total quantity');
+    if (deliveredQuantity <= 0 || deliveredQuantity >= order.quantity) {
+      throw Exception('Delivered quantity must be less than total quantity');
     }
 
-    final remainingQuantity = order.quantity - dispatchedQuantity;
+    final remainingQuantity = order.quantity - deliveredQuantity;
 
     final remainingOrder = SupplyOrder(
       id: order.id,
@@ -480,15 +481,15 @@ class DatabaseService {
       placedByUserName: order.placedByUserName,
       enteredByUserId: order.enteredByUserId,
       enteredByUserName: order.enteredByUserName,
-      status: 'Pending',
+      status: 'Received',
     );
 
-    final dispatchedOrder = SupplyOrder(
+    final deliveredOrder = SupplyOrder(
       orderReceivedDate: order.orderReceivedDate,
       orderDate: order.orderDate,
       customerName: order.customerName,
       materialProduct: order.materialProduct,
-      quantity: dispatchedQuantity,
+      quantity: deliveredQuantity,
       unit: order.unit,
       poNumber: order.poNumber,
       trayBatchNumber: order.trayBatchNumber,
@@ -499,42 +500,43 @@ class DatabaseService {
       placedByUserName: order.placedByUserName,
       enteredByUserId: order.enteredByUserId,
       enteredByUserName: order.enteredByUserName,
-      status: 'Dispatched',
+      status: 'Delivered',
     );
 
     try {
       await updateSupplyOrder(order.id!, remainingOrder, userId);
 
-      final createdDispatched = await _supabase
+      final createdDelivered = await _supabase
           .from('customer_supply_orders')
           .insert({
-            ...dispatchedOrder.toJson(),
-            'entered_by_user_id': dispatchedOrder.enteredByUserId,
+            ...deliveredOrder.toJson(),
+            'entered_by_user_id': deliveredOrder.enteredByUserId,
           })
           .select()
           .single();
 
       await _logAudit(
         'customer_supply_orders',
-        createdDispatched['id'].toString(),
+        createdDelivered['id'].toString(),
         'CREATE',
-        dispatchedOrder.toJson(),
+        deliveredOrder.toJson(),
         userId,
       );
 
       await _logAudit(
         'customer_supply_orders',
         order.id!,
-        'SPLIT_PARTIAL_DISPATCH',
+        'UPDATE',
         {
-          'dispatched_quantity': dispatchedQuantity,
+          'event': 'SPLIT_PARTIAL_DELIVERY',
+          'delivered_quantity': deliveredQuantity,
           'remaining_quantity': remainingQuantity,
-          'dispatched_order_id': createdDispatched['id'].toString(),
+          'delivered_order_id': createdDelivered['id'].toString(),
         },
         userId,
       );
     } catch (e) {
-      debugPrint('Error splitting supply order: $e');
+      debugPrint('Error splitting supply order delivery: $e');
       rethrow;
     }
   }

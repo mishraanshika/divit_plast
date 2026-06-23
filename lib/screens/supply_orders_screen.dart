@@ -31,11 +31,8 @@ class SupplyOrdersScreen extends StatefulWidget {
 class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
   final DatabaseService _databaseService = DatabaseService();
   static const List<String> _statusOptions = [
-    'Pending',
     'Received',
     'In Progress',
-    'Partially Dispatched',
-    'Dispatched',
     'Partially Delivered',
     'Delivered',
   ];
@@ -399,14 +396,8 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
 
   Color _statusColor(String status) {
     switch (status) {
-      case 'Pending':
-        return Colors.orange;
       case 'In Progress':
         return Colors.blue;
-      case 'Partially Dispatched':
-        return Colors.lightBlue.shade700;
-      case 'Dispatched':
-        return Colors.indigo;
       case 'Partially Delivered':
         return Colors.teal;
       case 'Delivered':
@@ -922,19 +913,19 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
 
     if (selected == null || selected == order.status) return;
     try {
-      if (selected == 'Partially Dispatched') {
-        final dispatchedQuantity = await _promptPartialDispatchQuantity(
+      if (selected == 'Partially Delivered') {
+        final deliveredQuantity = await _promptPartialDeliveryQuantity(
           title: order.customerName,
           subtitle: order.materialProduct,
           totalQuantity: order.quantity,
           unit: order.unit,
         );
 
-        if (dispatchedQuantity == null) return;
+        if (deliveredQuantity == null) return;
 
-        await _databaseService.splitSupplyOrderForPartialDispatch(
+        await _databaseService.splitSupplyOrderForPartialDelivery(
           order,
-          dispatchedQuantity,
+          deliveredQuantity,
           auth.currentUser!.uid,
         );
       } else {
@@ -953,7 +944,7 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
     }
   }
 
-  Future<double?> _promptPartialDispatchQuantity({
+  Future<double?> _promptPartialDeliveryQuantity({
     required String title,
     required String subtitle,
     required double totalQuantity,
@@ -978,7 +969,7 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
               Icon(Icons.local_shipping_outlined, color: Color(0xFF2196F3)),
               SizedBox(width: 8),
               Text(
-                'Partial Dispatch',
+                'Partial Delivery',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
             ],
@@ -1020,7 +1011,7 @@ class _SupplyOrdersScreenState extends State<SupplyOrdersScreen> {
                     decimal: true,
                   ),
                   decoration: InputDecoration(
-                    labelText: 'Dispatched quantity',
+                    labelText: 'Delivered quantity',
                     hintText: 'Enter quantity in $unit',
                     prefixIcon: const Icon(Icons.inventory_2_outlined),
                     border: InputBorder.none,

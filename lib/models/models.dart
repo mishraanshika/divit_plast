@@ -154,7 +154,7 @@ class SupplyOrder {
   final String enteredByUserId;
   final String enteredByUserName;
   final String
-      status; // Received, In Progress, Partially Dispatched, Dispatched, Partially Delivered, Delivered
+      status; // Received, In Progress, Partially Delivered, Delivered
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final DateTime? deletedAt;
